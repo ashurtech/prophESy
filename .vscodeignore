@@ -1,9 +1,0 @@
-**/.vscode/**
-**/node_modules/**
-**/.gitignore
-**/.git/**
-.vscode-test/**
-**/*.map
-.nyc_output/**
-**/*.vsix
-**/test-extension*.ps1
