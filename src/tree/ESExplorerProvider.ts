@@ -501,13 +501,37 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
         }
     }    private async fetchClusterInfo(client: Client, clusterId?: string): Promise<ExplorerItem[]> {
         try {
-            const info = await client.info();
+            const [info, healthResponse, nodesResponse] = await Promise.all([
+                client.info(),
+                client.cluster.health(),
+                client.nodes.info()
+            ]);
             const config = clusterId ? this.clusters.get(clusterId) : this.getActiveCluster();
+            
+            // Calculate node and shard information
+            const health: any = healthResponse;
+            const nodes: any = nodesResponse;
+            const totalNodes = health.number_of_nodes || 0;
+            const dataNodes = health.number_of_data_nodes || 0;
+            const currentShards = health.active_shards || 0;
+            const shardLimit = dataNodes * 1000;
+            const shardPercentage = shardLimit > 0 ? ((currentShards / shardLimit) * 100) : 0;
+            
+            // Determine shard status color and icon
+            let shardStatusIcon: vscode.ThemeIcon;
+            if (shardPercentage <= 80) {
+                shardStatusIcon = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+            } else if (shardPercentage <= 90) {
+                shardStatusIcon = new vscode.ThemeIcon('warning', new vscode.ThemeColor('charts.yellow'));
+            } else {
+                shardStatusIcon = new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
+            }
             
             const items = [
                 new ExplorerItem(`Name: ${info.name}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('tag')),
                 new ExplorerItem(`Version: ${info.version.number}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('versions')),
-                new ExplorerItem(`Cluster UUID: ${info.cluster_uuid}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('key'))
+                new ExplorerItem(`Cluster UUID: ${info.cluster_uuid}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('key')),
+                new ExplorerItem(`${totalNodes} nodes total, ${dataNodes} data nodes, ${currentShards} / ${shardLimit} shard vs limit - ${shardPercentage.toFixed(1)}%`, undefined, vscode.TreeItemCollapsibleState.None, shardStatusIcon)
             ];
 
             // Add cluster configuration info

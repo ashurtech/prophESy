@@ -2,8 +2,9 @@
   "name": "statusesk",
   "displayName": "statuESK - Elasticsearch Explorer",
   "description": "VS Code extension for managing and exploring Elasticsearch clusters with health monitoring",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "ASHURTECH",
+  "license": "MIT",
   "main": "./out/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -15,7 +16,6 @@
   },
   "keywords": ["elasticsearch", "es", "database", "cluster", "monitoring", "health"],
   "author": "ASHURTECH",
-  "license": "MIT",
   "icon": "resources/es_icon.png",
   "repository": {
     "type": "git",
@@ -162,6 +162,7 @@
   },
   "files": [
     "out/**",
-    "resources/**"
+    "resources/**",
+    "LICENSE"
   ]
 }
