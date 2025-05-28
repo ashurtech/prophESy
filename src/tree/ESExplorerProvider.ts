@@ -380,9 +380,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 items.push(healthItem);
                 items.push(healthDetailsItem);
             }
-            
-            items.push(
+              items.push(
                 new ExplorerItem('Cluster Info', `clusterInfo:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('info')),
+                new ExplorerItem('Important Links', `links:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('link-external')),
                 new ExplorerItem('Data Streams', `dataStreams:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('database')),
                 new ExplorerItem('Roles', `roles:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('person')),
                 new ExplorerItem('Role Mappings', `roleMappings:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('organization')),
@@ -422,11 +422,17 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             
             if (!client) {
                 return [new ExplorerItem('Not connected', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
-            }
-
-            switch (category) {
+            }            switch (category) {
                 case 'clusterInfo':
                     return this.fetchClusterInfo(client, clusterId);
+                case 'links':
+                    return this.fetchImportantLinks(clusterId);
+                case 'elasticsearch':
+                    return this.fetchElasticsearchLinks(clusterId);
+                case 'kibana':
+                    return this.fetchKibanaLinks(clusterId);
+                case 'haproxy':
+                    return this.fetchHAProxyLinks(clusterId);
                 case 'dataStreams':
                     return this.fetchDataStreams(client);
                 case 'roles':
@@ -543,12 +549,164 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 );
             }
 
-            return items;
-        } catch (err) {
+            return items;        } catch (err) {
             vscode.window.showErrorMessage(`Failed to fetch cluster info: ${err}`);
             return [new ExplorerItem('Failed to load cluster info', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
-    }    private async fetchDataStreams(client: Client): Promise<ExplorerItem[]> {
+    }
+
+    private fetchImportantLinks(clusterId: string): ExplorerItem[] {
+        const config = this.clusters.get(clusterId);
+        if (!config) {
+            return [new ExplorerItem('Cluster not found', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+        }
+
+        // Determine domain based on cluster name
+        const isProd = config.name.toUpperCase().includes('PROD');
+        const domain = isProd ? 'wtg.zone' : 'sand.wtg.zone';
+        const clusterName = config.name.toLowerCase();
+
+        // Extract base URL from nodeUrl if available
+        let elasticUrl = '';
+        if (config.nodeUrl) {
+            try {
+                const url = new URL(config.nodeUrl);
+                elasticUrl = `${url.protocol}//${url.host}`;
+            } catch {
+                elasticUrl = config.nodeUrl;
+            }
+        }
+
+        const items: ExplorerItem[] = [];
+
+        // Elasticsearch section
+        const elasticsearchSection = new ExplorerItem('Elasticsearch', `elasticsearch:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('database'));
+        items.push(elasticsearchSection);
+
+        // Kibana section
+        const kibanaSection = new ExplorerItem('Kibana', `kibana:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('graph'));
+        items.push(kibanaSection);
+
+        // HAProxy section
+        const haproxySection = new ExplorerItem('HAProxy', `haproxy:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('server-process'));
+        items.push(haproxySection);        return items;
+    }
+
+    private fetchElasticsearchLinks(clusterId: string): ExplorerItem[] {
+        const config = this.clusters.get(clusterId);
+        if (!config) {
+            return [new ExplorerItem('Cluster not found', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+        }
+
+        // Extract base URL from nodeUrl if available
+        let elasticUrl = '';
+        if (config.nodeUrl) {
+            try {
+                const url = new URL(config.nodeUrl);
+                elasticUrl = `${url.protocol}//${url.host}`;
+            } catch {
+                elasticUrl = config.nodeUrl;
+            }
+        }
+
+        const items: ExplorerItem[] = [];
+
+        // Cluster Health link
+        const healthLink = new ExplorerItem('GET _cluster/health', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('heart'));
+        healthLink.command = {
+            command: 'vscode.open',
+            title: 'Open Cluster Health',
+            arguments: [vscode.Uri.parse(`${elasticUrl}/_cluster/health`)]
+        };
+        healthLink.tooltip = `${elasticUrl}/_cluster/health`;
+        items.push(healthLink);
+
+        // Cluster Settings link
+        const settingsLink = new ExplorerItem('GET _cluster/settings', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('settings-gear'));
+        settingsLink.command = {
+            command: 'vscode.open',
+            title: 'Open Cluster Settings',
+            arguments: [vscode.Uri.parse(`${elasticUrl}/_cluster/settings`)]
+        };
+        settingsLink.tooltip = `${elasticUrl}/_cluster/settings`;
+        items.push(settingsLink);
+
+        return items;
+    }
+
+    private fetchKibanaLinks(clusterId: string): ExplorerItem[] {
+        const config = this.clusters.get(clusterId);
+        if (!config) {
+            return [new ExplorerItem('Cluster not found', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+        }
+
+        // Determine domain based on cluster name
+        const isProd = config.name.toUpperCase().includes('PROD');
+        const domain = isProd ? 'wtg.zone' : 'sand.wtg.zone';
+        const clusterName = config.name.toLowerCase();
+
+        const items: ExplorerItem[] = [];
+
+        // API Status link
+        const statusLink = new ExplorerItem('GET /api/status', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('pulse'));
+        statusLink.command = {
+            command: 'vscode.open',
+            title: 'Open Kibana Status',
+            arguments: [vscode.Uri.parse(`https://kibana.${clusterName}.${domain}/api/status`)]
+        };
+        statusLink.tooltip = `kibana.${clusterName}.${domain}/api/status`;
+        items.push(statusLink);
+
+        // Dev Console link
+        const devConsoleLink = new ExplorerItem('Dev Console', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('terminal'));
+        devConsoleLink.command = {
+            command: 'vscode.open',
+            title: 'Open Dev Console',
+            arguments: [vscode.Uri.parse(`https://kibana.${clusterName}.${domain}/app/dev_tools#/console`)]
+        };
+        devConsoleLink.tooltip = `kibana.${clusterName}.${domain}/app/dev_tools#/console`;
+        items.push(devConsoleLink);
+
+        // Stack Monitoring link
+        const monitoringLink = new ExplorerItem('Stack Monitoring', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('graph-line'));
+        monitoringLink.command = {
+            command: 'vscode.open',
+            title: 'Open Stack Monitoring',
+            arguments: [vscode.Uri.parse(`https://kibana.${clusterName}.${domain}/app/monitoring#/overview`)]
+        };
+        monitoringLink.tooltip = `kibana.${clusterName}.${domain}/app/monitoring#/overview`;
+        items.push(monitoringLink);
+
+        return items;
+    }
+
+    private fetchHAProxyLinks(clusterId: string): ExplorerItem[] {
+        const config = this.clusters.get(clusterId);
+        if (!config) {
+            return [new ExplorerItem('Cluster not found', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+        }
+
+        // Determine domain based on cluster name
+        const isProd = config.name.toUpperCase().includes('PROD');
+        const domain = isProd ? 'wtg.zone' : 'sand.wtg.zone';
+        const clusterName = config.name.toLowerCase();
+
+        const items: ExplorerItem[] = [];
+
+        // Stats Page link
+        const statsLink = new ExplorerItem('Stats Page', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('graph'));
+        statsLink.command = {
+            command: 'vscode.open',
+            title: 'Open HAProxy Stats',
+            arguments: [vscode.Uri.parse(`https://haproxy.${clusterName}.${domain}`)]
+        };
+        statsLink.tooltip = `haproxy.${clusterName}.${domain}`;
+        items.push(statsLink);
+
+        return items;
+    }
+
+    private async fetchDataStreams(client: Client): Promise<ExplorerItem[]> {
         try {
             const dataStreams = await client.indices.getDataStream();
             const dataStreamNames = dataStreams.data_streams?.map((ds: any) => ds.name) || [];

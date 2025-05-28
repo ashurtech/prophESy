@@ -1,2 +1,13 @@
 {
+    "typescript.preferences.noSemicolons": "off",
+    "typescript.suggest.autoImports": true,
+    "files.exclude": {
+        "out": false,
+        "node_modules": true,
+        "*.vsix": false
+    },
+    "search.exclude": {
+        "out": true,
+        "node_modules": true
+    }
 }
