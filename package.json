@@ -2,7 +2,7 @@
   "name": "statusesk",
   "displayName": "statuESK - Elasticsearch Explorer",
   "description": "VS Code extension for managing and exploring Elasticsearch clusters with health monitoring",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "ASHURTECH",
   "main": "./out/extension.js",
   "scripts": {
@@ -87,6 +87,16 @@
         "command": "esExt.toggleAutoRefresh",
         "title": "Toggle Auto Refresh Health Status",
         "icon": "$(sync)"
+      },
+      {
+        "command": "esExt.exportClusters",
+        "title": "Export Cluster Configurations",
+        "icon": "$(export)"
+      },
+      {
+        "command": "esExt.importClusters",
+        "title": "Import Cluster Configurations",
+        "icon": "$(import)"
       }
     ],
     "menus": {
@@ -110,6 +120,16 @@
           "command": "esExt.toggleAutoRefresh",
           "when": "view == esExtExplorer",
           "group": "navigation@4"
+        },
+        {
+          "command": "esExt.exportClusters",
+          "when": "view == esExtExplorer",
+          "group": "navigation@5"
+        },
+        {
+          "command": "esExt.importClusters",
+          "when": "view == esExtExplorer",
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [

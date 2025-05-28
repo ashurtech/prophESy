@@ -11,6 +11,21 @@ interface ClusterConfig {
     disableSSL?: boolean;
 }
 
+interface ClusterExportData {
+    name: string;
+    deploymentType: string;
+    nodeUrl?: string;
+    cloudId?: string;
+    authMethod: string;
+    disableSSL?: boolean;
+}
+
+interface ClusterExportFile {
+    version: string;
+    exportDate: string;
+    clusters: ClusterExportData[];
+}
+
 interface ClusterHealth {
     status: 'green' | 'yellow' | 'red' | 'unknown';
     clusterName: string;
@@ -556,9 +571,145 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                     new ExplorerItem(name, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('file-code'))
                 );
         } catch (err) {
-            vscode.window.showErrorMessage(`Failed to fetch Index Templates: ${err}`);
-            return [new ExplorerItem('Failed to load index templates', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+            vscode.window.showErrorMessage(`Failed to fetch Index Templates: ${err}`);            return [new ExplorerItem('Failed to load index templates', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
+    }
+
+    async exportClusters(): Promise<void> {
+        if (this.clusters.size === 0) {
+            vscode.window.showInformationMessage('No clusters to export.');
+            return;
+        }
+
+        try {
+            // Create export data without sensitive information
+            const exportData: ClusterExportFile = {
+                version: '1.0.0',
+                exportDate: new Date().toISOString(),
+                clusters: Array.from(this.clusters.values()).map(cluster => ({
+                    name: cluster.name,
+                    deploymentType: cluster.deploymentType,
+                    nodeUrl: cluster.nodeUrl,
+                    cloudId: cluster.cloudId,
+                    authMethod: cluster.authMethod,
+                    disableSSL: cluster.disableSSL
+                }))
+            };
+
+            // Show save dialog
+            const saveUri = await vscode.window.showSaveDialog({
+                defaultUri: vscode.Uri.file(`elasticsearch-clusters-${new Date().toISOString().split('T')[0]}.json`),
+                filters: {
+                    'JSON Files': ['json'],
+                    'All Files': ['*']
+                },
+                saveLabel: 'Export Clusters'
+            });
+
+            if (saveUri) {
+                await vscode.workspace.fs.writeFile(saveUri, Buffer.from(JSON.stringify(exportData, null, 2)));
+                vscode.window.showInformationMessage(`Successfully exported ${exportData.clusters.length} cluster configuration(s) to ${saveUri.fsPath}`);
+            }
+        } catch (error) {
+            console.error('[ESExt] Failed to export clusters:', error);
+            vscode.window.showErrorMessage(`Failed to export clusters: ${error}`);
+        }
+    }
+
+    async importClusters(): Promise<void> {
+        try {
+            // Show open dialog
+            const openUri = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: false,
+                canSelectMany: false,
+                filters: {
+                    'JSON Files': ['json'],
+                    'All Files': ['*']
+                },
+                openLabel: 'Import Clusters'
+            });
+
+            if (!openUri || openUri.length === 0) {
+                return;
+            }
+
+            // Read the file
+            const fileContent = await vscode.workspace.fs.readFile(openUri[0]);
+            const importData: ClusterExportFile = JSON.parse(fileContent.toString());
+
+            // Validate the import data
+            if (!importData.clusters || !Array.isArray(importData.clusters)) {
+                vscode.window.showErrorMessage('Invalid cluster configuration file format.');
+                return;
+            }
+
+            let importedCount = 0;
+            let skippedCount = 0;
+
+            for (const clusterData of importData.clusters) {
+                // Validate required fields
+                if (!clusterData.name || !clusterData.deploymentType || !clusterData.authMethod) {
+                    console.warn('[ESExt] Skipping invalid cluster:', clusterData);
+                    skippedCount++;
+                    continue;
+                }
+
+                // Check if cluster with same name already exists
+                const existingCluster = Array.from(this.clusters.values()).find(c => c.name === clusterData.name);
+                if (existingCluster) {
+                    const overwrite = await vscode.window.showWarningMessage(
+                        `Cluster "${clusterData.name}" already exists. Do you want to overwrite it?`,
+                        'Yes', 'No', 'Cancel'
+                    );
+
+                    if (overwrite === 'Cancel') {
+                        break;
+                    } else if (overwrite === 'No') {
+                        skippedCount++;
+                        continue;
+                    } else {
+                        // Remove existing cluster
+                        await this.removeCluster(existingCluster.id);
+                    }
+                }
+
+                // Create new cluster config
+                const newClusterConfig: ClusterConfig = {
+                    id: this.generateClusterId(),
+                    name: clusterData.name,
+                    deploymentType: clusterData.deploymentType,
+                    nodeUrl: clusterData.nodeUrl,
+                    cloudId: clusterData.cloudId,
+                    authMethod: clusterData.authMethod,
+                    disableSSL: clusterData.disableSSL
+                };
+
+                // Add the cluster
+                await this.addCluster(newClusterConfig);
+                importedCount++;
+            }
+
+            // Show summary
+            let message = `Successfully imported ${importedCount} cluster(s).`;
+            if (skippedCount > 0) {
+                message += ` ${skippedCount} cluster(s) were skipped.`;
+            }
+            
+            if (importedCount > 0) {
+                message += '\n\nNote: You will need to configure authentication credentials for the imported clusters.';
+            }
+
+            vscode.window.showInformationMessage(message);
+
+        } catch (error) {
+            console.error('[ESExt] Failed to import clusters:', error);
+            vscode.window.showErrorMessage(`Failed to import clusters: ${error}`);
+        }
+    }
+
+    private generateClusterId(): string {
+        return `cluster_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 }
 

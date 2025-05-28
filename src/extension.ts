@@ -194,7 +194,23 @@ export function activate(context: vscode.ExtensionContext) {
             explorerProvider.toggleAutoRefresh();
         }),
 
-        vscode.commands.registerCommand('esExt.refresh', () => explorerProvider.refresh())
+        vscode.commands.registerCommand('esExt.refresh', () => explorerProvider.refresh()),
+
+        vscode.commands.registerCommand('esExt.exportClusters', async () => {
+            try {
+                await explorerProvider.exportClusters();
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`Export failed: ${err.message}`);
+            }
+        }),
+
+        vscode.commands.registerCommand('esExt.importClusters', async () => {
+            try {
+                await explorerProvider.importClusters();
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`Import failed: ${err.message}`);
+            }
+        })
     );
 
     // Register context menu commands for cluster items
