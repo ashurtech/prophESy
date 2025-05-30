@@ -45,7 +45,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
     private activeClusterId: string | undefined;
     private context: vscode.ExtensionContext;
     private autoRefreshEnabled: boolean = false;
-    private refreshTimer: NodeJS.Timeout | undefined;    constructor(context: vscode.ExtensionContext) {
+    private refreshTimer: NodeJS.Timeout | undefined;
+
+    constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.loadClusters();
         // Load auto-refresh setting
@@ -74,6 +76,10 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
 
     async loadClustersOnStartup(): Promise<void> {
         await this.loadClusters();
+        
+        // Auto-reconnect previously connected clusters
+        await this.autoReconnectClusters();
+        
         this.refresh();
     }
 
@@ -89,15 +95,22 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
     async removeCluster(clusterId: string): Promise<void> {
         this.clusters.delete(clusterId);
         this.clients.delete(clusterId);
+        
+        // Remove from connected clusters list for auto-reconnect
+        await this.removeConnectedCluster(clusterId);
+        
         await this.context.secrets.delete(`esExt.cluster.${clusterId}.config`);
         await this.context.secrets.delete(`esExt.cluster.${clusterId}.username`);
         await this.context.secrets.delete(`esExt.cluster.${clusterId}.password`);
         await this.context.secrets.delete(`esExt.cluster.${clusterId}.apiKey`);
-          if (this.activeClusterId === clusterId) {
+        
+        if (this.activeClusterId === clusterId) {
             this.activeClusterId = this.clusters.size > 0 ? Array.from(this.clusters.keys())[0] : undefined;
         }
         this.refresh();
-    }    toggleAutoRefresh(): void {
+    }
+
+    toggleAutoRefresh(): void {
         this.autoRefreshEnabled = !this.autoRefreshEnabled;
         this.context.globalState.update('esExt.autoRefreshEnabled', this.autoRefreshEnabled);
         
@@ -125,7 +138,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             clearInterval(this.refreshTimer);
             this.refreshTimer = undefined;
         }
-    }    private async refreshClusterHealth(): Promise<void> {
+    }
+
+    private async refreshClusterHealth(): Promise<void> {
         // Refresh health for all connected clusters
         for (const [clusterId, client] of this.clients) {
             try {
@@ -156,13 +171,17 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
         }
         
         this.refresh();
-    }    getAutoRefreshStatus(): boolean {
+    }
+
+    getAutoRefreshStatus(): boolean {
         return this.autoRefreshEnabled;
     }
 
     dispose(): void {
         this.stopAutoRefresh();
-    }async connectToCluster(clusterId: string): Promise<boolean> {
+    }
+
+    async connectToCluster(clusterId: string): Promise<boolean> {
         const config = this.clusters.get(clusterId);
         if (!config) {
             vscode.window.showErrorMessage(`Cluster ${clusterId} not found`);
@@ -206,8 +225,14 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
 
                 progress.report({ increment: 30, message: 'Testing connection...' });
                 const client = new Client(clientOptions);
-                await client.ping();                this.clients.set(clusterId, client);
+                await client.ping();
+                
+                this.clients.set(clusterId, client);
                 this.activeClusterId = clusterId;
+                
+                // Save connection state for auto-reconnect
+                await this.saveConnectedCluster(clusterId);
+                
                 progress.report({ increment: 20, message: 'Connected successfully!' });
                 
                 // Fetch initial health status for this cluster
@@ -252,7 +277,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
 
     getTreeItem(element: ExplorerItem): vscode.TreeItem {
         return element;
-    }    async getChildren(element?: ExplorerItem): Promise<ExplorerItem[]> {
+    }
+
+    async getChildren(element?: ExplorerItem): Promise<ExplorerItem[]> {
         if (!element) {
             // Root level - show all clusters with their data
             const items: ExplorerItem[] = [];
@@ -263,7 +290,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 addClusterItem.command = { command: 'esExt.addCluster', title: 'Add Cluster' };
                 addClusterItem.iconPath = new vscode.ThemeIcon('add');
                 return [addClusterItem];
-            }            // Show each cluster as a top-level expandable item
+            }
+
+            // Show each cluster as a top-level expandable item
             for (const [id, config] of this.clusters) {
                 const isActive = id === this.activeClusterId;
                 const isConnected = this.clients.has(id);
@@ -272,8 +301,7 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 let statusText = '';
                 let healthText = '';
                 let healthIcon = new vscode.ThemeIcon('circle-outline', new vscode.ThemeColor('disabledForeground'));
-                
-                if (isConnected) {
+                  if (isConnected) {
                     statusText = ' (Connected)';
                     
                     if (health) {
@@ -300,7 +328,13 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                     healthIcon = new vscode.ThemeIcon('circle-outline', new vscode.ThemeColor('disabledForeground'));
                 }
                 
-                const label = `${config.name}${statusText}${healthText}`;
+                // Add node information to the cluster label if connected and health data is available
+                let nodeInfoText = '';
+                if (isConnected && health) {
+                    nodeInfoText = ` [${health.numberOfNodes} nodes, ${health.numberOfDataNodes} data]`;
+                }
+                
+                const label = `${config.name}${statusText}${healthText}${nodeInfoText}`;
                 const clusterItem = new ExplorerItem(label, `cluster:${id}`, vscode.TreeItemCollapsibleState.Collapsed);
                 clusterItem.iconPath = healthIcon;
                 clusterItem.tooltip = `${config.deploymentType} - ${config.nodeUrl || config.cloudId}${health ? `\nStatus: ${health.status}\nNodes: ${health.numberOfNodes}\nLast checked: ${health.lastChecked.toLocaleTimeString()}` : ''}`;
@@ -345,7 +379,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 items.push(removeItem);
 
                 return items;
-            }            // Show cluster data categories if connected
+            }
+
+            // Show cluster data categories if connected
             const health = this.clusterHealth.get(clusterId);
             if (health) {
                 const healthStatusText = `Health Status: ${health.status.toUpperCase()}`;
@@ -380,7 +416,8 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 items.push(healthItem);
                 items.push(healthDetailsItem);
             }
-              items.push(
+            
+            items.push(
                 new ExplorerItem('Cluster Info', `clusterInfo:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('info')),
                 new ExplorerItem('Important Links', `links:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('link-external')),
                 new ExplorerItem('Data Streams', `dataStreams:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('database')),
@@ -392,9 +429,7 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             // Add management actions
             const divider = new ExplorerItem('───────────', 'divider', vscode.TreeItemCollapsibleState.None);
             divider.iconPath = new vscode.ThemeIcon('blank');
-            items.push(divider);
-
-            if (clusterId !== this.activeClusterId) {
+            items.push(divider);            if (clusterId !== this.activeClusterId) {
                 const selectItem = new ExplorerItem('Set as Active', 'select', vscode.TreeItemCollapsibleState.None);
                 selectItem.command = { 
                     command: 'esExt.selectCluster', 
@@ -404,6 +439,15 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 selectItem.iconPath = new vscode.ThemeIcon('star');
                 items.push(selectItem);
             }
+
+            const disconnectItem = new ExplorerItem('Disconnect', 'disconnect', vscode.TreeItemCollapsibleState.None);
+            disconnectItem.command = { 
+                command: 'esExt.disconnectFromCluster', 
+                title: 'Disconnect', 
+                arguments: [clusterId] 
+            };
+            disconnectItem.iconPath = new vscode.ThemeIcon('debug-disconnect');
+            items.push(disconnectItem);
 
             const removeItem = new ExplorerItem('Remove Cluster', 'remove', vscode.TreeItemCollapsibleState.None);
             removeItem.command = { 
@@ -415,14 +459,18 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             items.push(removeItem);
 
             return items;
-        }        // Handle cluster-specific content expansion
+        }
+
+        // Handle cluster-specific content expansion
         if (element.contextValue?.includes(':')) {
             const [category, clusterId] = element.contextValue.split(':');
             const client = this.clients.get(clusterId);
             
             if (!client) {
                 return [new ExplorerItem('Not connected', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
-            }            switch (category) {
+            }
+
+            switch (category) {
                 case 'clusterInfo':
                     return this.fetchClusterInfo(client, clusterId);
                 case 'links':
@@ -444,7 +492,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 default:
                     return [];
             }
-        }        // Legacy support for old context values (should not be used anymore)
+        }
+
+        // Legacy support for old context values (should not be used anymore)
         const client = this.getActiveClient();
         if (!client) return [];
 
@@ -505,7 +555,189 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
         } else if (authMethod === 'API Key') {
             await this.context.secrets.store(`esExt.cluster.${clusterId}.apiKey`, credentials.apiKey);
         }
-    }    private async fetchClusterInfo(client: Client, clusterId?: string): Promise<ExplorerItem[]> {
+    }
+
+    // Connection state management for auto-reconnect
+    private async saveConnectedCluster(clusterId: string): Promise<void> {
+        const connectedClusters = await this.context.globalState.get<string[]>('esExt.connectedClusters', []);
+        if (!connectedClusters.includes(clusterId)) {
+            connectedClusters.push(clusterId);
+            await this.context.globalState.update('esExt.connectedClusters', connectedClusters);
+        }
+    }
+
+    private async removeConnectedCluster(clusterId: string): Promise<void> {
+        const connectedClusters = await this.context.globalState.get<string[]>('esExt.connectedClusters', []);
+        const updatedClusters = connectedClusters.filter(id => id !== clusterId);
+        await this.context.globalState.update('esExt.connectedClusters', updatedClusters);
+    }
+
+    private async autoReconnectClusters(): Promise<void> {
+        const connectedClusters = await this.context.globalState.get<string[]>('esExt.connectedClusters', []);
+        
+        if (connectedClusters.length === 0) {
+            return;
+        }
+
+        // Show progress for auto-reconnection
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Auto-reconnecting clusters...',
+            cancellable: false
+        }, async (progress) => {
+            let reconnectedCount = 0;
+            let failedCount = 0;
+
+            for (let i = 0; i < connectedClusters.length; i++) {
+                const clusterId = connectedClusters[i];
+                const config = this.clusters.get(clusterId);
+                
+                if (!config) {
+                    // Cluster no longer exists, remove from connected list
+                    await this.removeConnectedCluster(clusterId);
+                    failedCount++;
+                    continue;
+                }
+
+                progress.report({ 
+                    increment: (i / connectedClusters.length) * 100,
+                    message: `Reconnecting to ${config.name}...` 
+                });
+
+                try {
+                    const success = await this.connectToClusterSilently(clusterId);
+                    if (success) {
+                        reconnectedCount++;
+                    } else {
+                        failedCount++;
+                        await this.removeConnectedCluster(clusterId);
+                    }
+                } catch (error) {
+                    console.error(`[ESExt] Auto-reconnect failed for ${config.name}:`, error);
+                    failedCount++;
+                    await this.removeConnectedCluster(clusterId);
+                }
+            }
+
+            // Show summary if we had clusters to reconnect
+            if (reconnectedCount > 0 || failedCount > 0) {
+                let message = '';
+                if (reconnectedCount > 0) {
+                    message += `Auto-reconnected ${reconnectedCount} cluster(s).`;
+                }
+                if (failedCount > 0) {
+                    if (message) message += ' ';
+                    message += `${failedCount} cluster(s) failed to reconnect.`;
+                }
+                
+                if (failedCount > 0) {
+                    vscode.window.showWarningMessage(message);
+                } else {
+                    vscode.window.showInformationMessage(message);
+                }
+            }
+        });
+    }
+
+    private async connectToClusterSilently(clusterId: string): Promise<boolean> {
+        const config = this.clusters.get(clusterId);
+        if (!config) {
+            return false;
+        }
+
+        try {
+            const clientOptions: any = {};
+            
+            if (config.deploymentType === 'Elastic Cloud') {
+                clientOptions.cloud = { id: config.cloudId };
+            } else {
+                clientOptions.node = config.nodeUrl;
+            }
+
+            // Load auth from secrets
+            if (config.authMethod === 'Basic: Username/Password') {
+                const username = await this.context.secrets.get(`esExt.cluster.${clusterId}.username`);
+                const password = await this.context.secrets.get(`esExt.cluster.${clusterId}.password`);
+                if (username && password) {
+                    clientOptions.auth = { username, password };
+                }
+            } else if (config.authMethod === 'API Key') {
+                const apiKey = await this.context.secrets.get(`esExt.cluster.${clusterId}.apiKey`);
+                if (apiKey) {
+                    clientOptions.auth = { apiKey };
+                }
+            }
+
+            if (config.disableSSL) {
+                clientOptions.ssl = { rejectUnauthorized: false };
+                process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+            }
+
+            const client = new Client(clientOptions);
+            await client.ping();
+
+            this.clients.set(clusterId, client);
+            if (!this.activeClusterId) {
+                this.activeClusterId = clusterId;
+            }
+            
+            // Fetch initial health status for this cluster
+            try {
+                const healthResponse: any = await client.cluster.health();
+                const health = healthResponse.body || healthResponse;
+                
+                this.clusterHealth.set(clusterId, {
+                    status: health.status || 'unknown',
+                    clusterName: health.cluster_name || 'Unknown',
+                    numberOfNodes: health.number_of_nodes || 0,
+                    numberOfDataNodes: health.number_of_data_nodes || 0,
+                    activePrimaryShards: health.active_primary_shards || 0,
+                    activeShards: health.active_shards || 0,
+                    lastChecked: new Date()
+                });
+            } catch (healthError) {
+                // Set unknown status on health check error
+                this.clusterHealth.set(clusterId, {
+                    status: 'unknown',
+                    clusterName: 'Unknown',
+                    numberOfNodes: 0,
+                    numberOfDataNodes: 0,
+                    activePrimaryShards: 0,
+                    activeShards: 0,
+                    lastChecked: new Date()
+                });
+            }
+            
+            return true;        } catch (err: any) {
+            console.error(`[ESExt] Silent reconnect failed for cluster ${clusterId}:`, err);
+            return false;
+        }
+    }
+
+    async disconnectFromCluster(clusterId: string): Promise<void> {
+        // Remove client connection
+        this.clients.delete(clusterId);
+        
+        // Remove from connected clusters list
+        await this.removeConnectedCluster(clusterId);
+        
+        // Clear health status
+        this.clusterHealth.delete(clusterId);
+        
+        // If this was the active cluster, clear it
+        if (this.activeClusterId === clusterId) {
+            this.activeClusterId = undefined;
+        }
+        
+        // Refresh the tree
+        this.refresh();
+        
+        const cluster = this.clusters.get(clusterId);
+        const clusterName = cluster ? cluster.name : 'Unknown';
+        vscode.window.showInformationMessage(`Disconnected from ${clusterName}`);
+    }
+
+    private async fetchClusterInfo(client: Client, clusterId?: string): Promise<ExplorerItem[]> {
         try {
             const [info, healthResponse, nodesResponse] = await Promise.all([
                 client.info(),
@@ -532,12 +764,10 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             } else {
                 shardStatusIcon = new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
             }
-            
-            const items = [
+              const items = [
                 new ExplorerItem(`Name: ${info.name}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('tag')),
                 new ExplorerItem(`Version: ${info.version.number}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('versions')),
-                new ExplorerItem(`Cluster UUID: ${info.cluster_uuid}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('key')),
-                new ExplorerItem(`${totalNodes} nodes total, ${dataNodes} data nodes, ${currentShards} / ${shardLimit} shard vs limit - ${shardPercentage.toFixed(1)}%`, undefined, vscode.TreeItemCollapsibleState.None, shardStatusIcon)
+                new ExplorerItem(`Cluster UUID: ${info.cluster_uuid}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('key'))
             ];
 
             // Add cluster configuration info
@@ -549,7 +779,8 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 );
             }
 
-            return items;        } catch (err) {
+            return items;
+        } catch (err) {
             vscode.window.showErrorMessage(`Failed to fetch cluster info: ${err}`);
             return [new ExplorerItem('Failed to load cluster info', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
@@ -589,7 +820,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
 
         // HAProxy section
         const haproxySection = new ExplorerItem('HAProxy', `haproxy:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('server-process'));
-        items.push(haproxySection);        return items;
+        items.push(haproxySection);
+
+        return items;
     }
 
     private fetchElasticsearchLinks(clusterId: string): ExplorerItem[] {
@@ -719,7 +952,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             vscode.window.showErrorMessage(`Failed to fetch Data Streams: ${err}`);
             return [new ExplorerItem('Failed to load data streams', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
-    }    private async fetchRoles(client: Client): Promise<ExplorerItem[]> {
+    }
+
+    private async fetchRoles(client: Client): Promise<ExplorerItem[]> {
         try {
             const roles = await client.security.getRole();
             return Object.keys(roles)
@@ -731,7 +966,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             vscode.window.showErrorMessage(`Failed to fetch Roles: ${err}`);
             return [new ExplorerItem('Failed to load roles', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
-    }    private async fetchRoleMappings(client: Client): Promise<ExplorerItem[]> {
+    }
+
+    private async fetchRoleMappings(client: Client): Promise<ExplorerItem[]> {
         try {
             const roleMappings = await client.security.getRoleMapping();
             return Object.keys(roleMappings)
@@ -743,7 +980,9 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             vscode.window.showErrorMessage(`Failed to fetch Role Mappings: ${err}`);
             return [new ExplorerItem('Failed to load role mappings', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
-    }    private async fetchIndexTemplates(client: Client): Promise<ExplorerItem[]> {
+    }
+
+    private async fetchIndexTemplates(client: Client): Promise<ExplorerItem[]> {
         try {
             const templates = await client.indices.getIndexTemplate();
             return templates.index_templates
@@ -753,7 +992,8 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                     new ExplorerItem(name, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('file-code'))
                 );
         } catch (err) {
-            vscode.window.showErrorMessage(`Failed to fetch Index Templates: ${err}`);            return [new ExplorerItem('Failed to load index templates', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+            vscode.window.showErrorMessage(`Failed to fetch Index Templates: ${err}`);
+            return [new ExplorerItem('Failed to load index templates', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
     }
 
@@ -888,9 +1128,7 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             console.error('[ESExt] Failed to import clusters:', error);
             vscode.window.showErrorMessage(`Failed to import clusters: ${error}`);
         }
-    }
-
-    private generateClusterId(): string {
+    }    private generateClusterId(): string {
         return `cluster_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 }

@@ -202,14 +202,19 @@ export function activate(context: vscode.ExtensionContext) {
             } catch (err: any) {
                 vscode.window.showErrorMessage(`Export failed: ${err.message}`);
             }
-        }),
-
-        vscode.commands.registerCommand('esExt.importClusters', async () => {
+        }),        vscode.commands.registerCommand('esExt.importClusters', async () => {
             try {
                 await explorerProvider.importClusters();
             } catch (err: any) {
                 vscode.window.showErrorMessage(`Import failed: ${err.message}`);
             }
+        }),
+
+        vscode.commands.registerCommand('esExt.disconnectFromCluster', async (clusterId: string) => {
+            const cluster = explorerProvider.getCluster(clusterId);
+            if (!cluster) return;
+
+            await explorerProvider.disconnectFromCluster(clusterId);
         })
     );
 
