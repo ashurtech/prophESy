@@ -19,7 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
                 placeHolder: 'e.g. Production Cluster'
             });
             if (!name) return;
-
+        
             const deploymentType = await vscode.window.showQuickPick(
                 ['Self-managed Cluster', 'Elastic Cloud'],
                 { placeHolder: 'Select Elasticsearch deployment type' }
@@ -207,6 +207,57 @@ export function activate(context: vscode.ExtensionContext) {
                 await explorerProvider.importClusters();
             } catch (err: any) {
                 vscode.window.showErrorMessage(`Import failed: ${err.message}`);
+            }
+        }),
+
+        vscode.commands.registerCommand('esExt.showIndexTemplate', async (templateName: string) => {
+            // If called from the tree, templateName should be provided. If not, prompt for it.
+            if (!templateName) {
+                const inputName = await vscode.window.showInputBox({
+                    prompt: 'Enter Index Template Name',
+                    placeHolder: 'e.g. my_template'
+                });
+                if (!inputName) {
+                    vscode.window.showInformationMessage('No index template name provided.');
+                    return;
+                }
+                templateName = inputName;
+            }
+
+            let client = explorerProvider.getActiveClient();
+            if (!client) {
+                console.warn('[esExt.showIndexTemplate] No active Elasticsearch client found.');
+                vscode.window.showErrorMessage('Please connect to an Elasticsearch cluster first.');
+                return;
+            }
+
+            try {
+                // Use getIndexTemplate to fetch composable template definitions,
+                // consistent with how they are listed.
+                const response = await client.indices.getIndexTemplate({ name: templateName });
+
+                // Fix: Cast response to any to access .body
+                const templates = (response as any).body?.index_templates || (response as any).index_templates;
+                const templateInfo = templates?.find((t: any) => t.name === templateName);
+
+                const templateDefinition = templateInfo?.index_template;
+
+                if (templateDefinition) {
+                    const prettyJson = JSON.stringify(templateDefinition, null, 2);
+                    const doc = await vscode.workspace.openTextDocument({
+                        content: prettyJson,
+                        language: 'json'
+                    });
+                    await vscode.window.showTextDocument(doc, { preview: false });
+                } else {
+                    vscode.window.showErrorMessage(`Index template "${templateName}" definition not found. It might not exist, the name is incorrect, or it's not a composable template.`);
+                }
+            } catch (err: any) {
+                if (err.meta && err.meta.statusCode === 404) {
+                    vscode.window.showErrorMessage(`Index template "${templateName}" not found (404).`);
+                } else {
+                    vscode.window.showErrorMessage(`Failed to fetch index template "${templateName}": ${err.message}`);
+                }
             }
         }),
 

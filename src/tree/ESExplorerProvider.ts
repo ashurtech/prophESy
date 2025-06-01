@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { Client } from '@elastic/elasticsearch';
 
+
+
 interface ClusterConfig {
     id: string;
     name: string;
@@ -984,15 +986,29 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
 
     private async fetchIndexTemplates(client: Client): Promise<ExplorerItem[]> {
         try {
-            const templates = await client.indices.getIndexTemplate();
-            return templates.index_templates
-                .map((t: any) => t.name)
-                .sort((a, b) => a.localeCompare(b))
-                .map((name: string) => 
-                    new ExplorerItem(name, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('file-code'))
-                );
-        } catch (err) {
-            vscode.window.showErrorMessage(`Failed to fetch Index Templates: ${err}`);
+            const response = await client.indices.getIndexTemplate(); // Fetches composable index templates
+            const body = (response as any).body || response;
+            if (body && Array.isArray(body.index_templates)) {
+                return body.index_templates
+                    .map((templateInfo: any) => { // templateInfo contains name and the template definition
+                        const treeItem = new ExplorerItem(templateInfo.name, `indexTemplateItem:${templateInfo.name}`, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('file-code'));
+                        treeItem.command = {
+                            command: 'esExt.showIndexTemplate',
+                            title: 'View Index Template',
+                            arguments: [templateInfo.name]
+                        };
+                        return treeItem;
+                    })
+                    .sort((a: ExplorerItem, b: ExplorerItem) => a.label.localeCompare(b.label as string)); // Sort by label
+            } else {
+                // Handle cases where index_templates is not an array or response.body is not as expected
+                console.warn('[ESExt] No index templates found or unexpected response format from client.indices.getIndexTemplate()');
+                vscode.window.showInformationMessage('No index templates found.');
+                return [];
+            }
+        } catch (err: any) {
+            console.error('[ESExt] Error fetching index templates:', err);
+            vscode.window.showErrorMessage(`Failed to fetch Index Templates: ${err.message}`);
             return [new ExplorerItem('Failed to load index templates', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
     }
