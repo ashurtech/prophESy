@@ -12,7 +12,10 @@
       "outFiles": [
         "${workspaceFolder}/out/**/*.js"
       ],
-      "preLaunchTask": "npm: compile"
+      "preLaunchTask": "npm: compile",
+      "env": {
+        "NODE_EXTRA_CA_CERTS": "${workspaceFolder}/resources/ca.pem"
+      }
     },
     {
       "name": "Debug Extension Tests",
@@ -24,7 +27,10 @@
         "--extensionTestsPath=${workspaceFolder}/out/test"
       ],
       "preLaunchTask": "npm: compile",
-      "outFiles": ["${workspaceFolder}/out/test/**/*.js"]
+      "outFiles": ["${workspaceFolder}/out/test/**/*.js"],
+      "env": {
+        "NODE_EXTRA_CA_CERTS": "${workspaceFolder}/resources/ca.pem"
+      }
     }
   ]
 }

@@ -266,6 +266,32 @@ export function activate(context: vscode.ExtensionContext) {
             if (!cluster) return;
 
             await explorerProvider.disconnectFromCluster(clusterId);
+        }),
+
+        vscode.commands.registerCommand('esExt.clearAllClusterData', async () => {
+            const confirm = await vscode.window.showWarningMessage(
+                'This will remove ALL saved clusters and credentials from VS Code. Are you sure?',
+                { modal: true },
+                'Yes, clear all'
+            );
+            if (confirm !== 'Yes, clear all') return;
+
+            // Remove all cluster IDs from global state
+            const clusterIds = await context.globalState.get<string[]>('esExt.clusterIds', []);
+            await context.globalState.update('esExt.clusterIds', []);
+            await context.globalState.update('esExt.connectedClusters', []);
+            await context.globalState.update('esExt.autoRefreshEnabled', false);
+
+            // Remove all cluster configs and credentials from secrets
+            for (const id of clusterIds) {
+                await context.secrets.delete(`esExt.cluster.${id}.config`);
+                await context.secrets.delete(`esExt.cluster.${id}.username`);
+                await context.secrets.delete(`esExt.cluster.${id}.password`);
+                await context.secrets.delete(`esExt.cluster.${id}.apiKey`);
+            }
+
+            vscode.window.showInformationMessage('All cluster data and credentials have been cleared.');
+            explorerProvider.refresh();
         })
     );
 
