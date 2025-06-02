@@ -2,7 +2,7 @@
   "name": "statusesk",
   "displayName": "statuESK - Elasticsearch Explorer",
   "description": "VS Code extension for managing and exploring Elasticsearch clusters with health monitoring",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "publisher": "ASHURTECH",
   "license": "MIT",
   "main": "./out/extension.js",
@@ -14,7 +14,14 @@
     "test": "echo \"No tests configured\" && exit 0",
     "package": "vsce package"
   },
-  "keywords": ["elasticsearch", "es", "database", "cluster", "monitoring", "health"],
+  "keywords": [
+    "elasticsearch",
+    "es",
+    "database",
+    "cluster",
+    "monitoring",
+    "health"
+  ],
   "author": "ASHURTECH",
   "icon": "resources/es_icon.png",
   "repository": {
@@ -144,7 +151,7 @@
           "group": "inline@1"
         },
         {
-          "command": "esExt.removeCluster", 
+          "command": "esExt.removeCluster",
           "when": "view == esExtExplorer && viewItem == remove",
           "group": "inline@2"
         },
