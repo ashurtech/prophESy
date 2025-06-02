@@ -96,7 +96,7 @@
       {
         "command": "esExt.importClusters",
         "title": "Import Cluster Configurations",
-        "icon": "$(import)"
+        "icon": "$(cloud-download)"
       },
       {
         "command": "esExt.clearAllClusterData",

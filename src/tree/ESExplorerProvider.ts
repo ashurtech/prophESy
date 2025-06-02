@@ -190,6 +190,36 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             return false;
         }
 
+        // --- Prompt for credentials if missing ---
+        let credentials: any = {};
+        if (config.authMethod === 'Basic: Username/Password') {
+            let username = await this.context.secrets.get(`esExt.cluster.${clusterId}.username`);
+            let password = await this.context.secrets.get(`esExt.cluster.${clusterId}.password`);
+            if (!username || !password) {
+                username = await vscode.window.showInputBox({ prompt: 'Username for ' + config.name });
+                password = username ? await vscode.window.showInputBox({ prompt: 'Password', password: true }) : undefined;
+                if (!username || !password) {
+                    vscode.window.showWarningMessage('Username and password are required to connect.');
+                    return false;
+                }
+                credentials = { username, password };
+                await this.context.secrets.store(`esExt.cluster.${clusterId}.username`, username);
+                await this.context.secrets.store(`esExt.cluster.${clusterId}.password`, password);
+            }
+        } else if (config.authMethod === 'API Key') {
+            let apiKey = await this.context.secrets.get(`esExt.cluster.${clusterId}.apiKey`);
+            if (!apiKey) {
+                apiKey = await vscode.window.showInputBox({ prompt: 'API Key for ' + config.name });
+                if (!apiKey) {
+                    vscode.window.showWarningMessage('API Key is required to connect.');
+                    return false;
+                }
+                credentials = { apiKey };
+                await this.context.secrets.store(`esExt.cluster.${clusterId}.apiKey`, apiKey);
+            }
+        }
+        // --- End prompt for credentials ---
+
         return vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: `Connecting to ${config.name}...`,
@@ -206,7 +236,7 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                     clientOptions.node = config.nodeUrl;
                 }
 
-                // Load auth from secrets
+                // Use credentials if present
                 if (config.authMethod === 'Basic: Username/Password') {
                     const username = await this.context.secrets.get(`esExt.cluster.${clusterId}.username`);
                     const password = await this.context.secrets.get(`esExt.cluster.${clusterId}.password`);
