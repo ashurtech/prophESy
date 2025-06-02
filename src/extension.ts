@@ -292,8 +292,34 @@ export function activate(context: vscode.ExtensionContext) {
 
             vscode.window.showInformationMessage('All cluster data and credentials have been cleared.');
             explorerProvider.refresh();
-        })
-    );
+        }),
+
+        vscode.commands.registerCommand('esExt.setCACertificate', async () => {
+            const fileUris = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: false,
+                canSelectMany: false,
+                filters: { 'PEM Files': ['pem'], 'All Files': ['*'] },
+                openLabel: 'Select CA Certificate (PEM)'
+            });
+            if (!fileUris || fileUris.length === 0) {
+                vscode.window.showInformationMessage('No CA certificate selected.');
+                return;
+            }
+            try {
+                const fileUri = fileUris[0];
+                const fileContent = await vscode.workspace.fs.readFile(fileUri);
+                await context.globalState.update('esExt.caCertificate', Buffer.from(fileContent).toString('utf8'));
+                vscode.window.showInformationMessage('CA certificate set. All new cluster connections will use this certificate.');
+            } catch (err: any) {
+                vscode.window.showErrorMessage('Failed to read CA certificate: ' + err.message);
+            }
+        }),
+
+        vscode.commands.registerCommand('esExt.clearCACertificate', async () => {
+            await context.globalState.update('esExt.caCertificate', undefined);
+            vscode.window.showInformationMessage('CA certificate cleared. New connections will not use a custom CA.');
+        }),
 
     // Register context menu commands for cluster items
     vscode.commands.registerCommand('esExt.clusterContextMenu', async (item) => {
@@ -316,7 +342,8 @@ export function activate(context: vscode.ExtensionContext) {
                     break;
             }
         }
-    });
+    })
+    );
 }
 
 export function deactivate() {

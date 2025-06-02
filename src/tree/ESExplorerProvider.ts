@@ -255,6 +255,13 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
                 }
 
+                // Inject CA certificate if present
+                const caCert = await this.context.globalState.get<string>('esExt.caCertificate');
+                if (caCert) {
+                    clientOptions.tls = clientOptions.tls || {};
+                    clientOptions.tls.ca = Buffer.from(caCert, 'utf8');
+                }
+
                 progress.report({ increment: 30, message: 'Testing connection...' });
                 const client = new Client(clientOptions);
                 await client.ping();
@@ -703,6 +710,13 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             if (config.disableSSL) {
                 clientOptions.ssl = { rejectUnauthorized: false };
                 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+            }
+
+            // Inject CA certificate if present
+            const caCert = await this.context.globalState.get<string>('esExt.caCertificate');
+            if (caCert) {
+                clientOptions.tls = clientOptions.tls || {};
+                clientOptions.tls.ca = Buffer.from(caCert, 'utf8');
             }
 
             const client = new Client(clientOptions);
