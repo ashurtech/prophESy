@@ -1068,9 +1068,15 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             const roles = await client.security.getRole();
             return Object.keys(roles)
                 .sort((a, b) => a.localeCompare(b))
-                .map(name => 
-                    new ExplorerItem(name, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('person'))
-                );
+                .map(name => {
+                    const item = new ExplorerItem(name, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('person'));
+                    item.command = {
+                        command: 'esExt.showRole',
+                        title: 'View Role',
+                        arguments: [name]
+                    };
+                    return item;
+                });
         } catch (err) {
             vscode.window.showErrorMessage(`Failed to fetch Roles: ${err}`);
             return [new ExplorerItem('Failed to load roles', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
@@ -1082,9 +1088,15 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             const roleMappings = await client.security.getRoleMapping();
             return Object.keys(roleMappings)
                 .sort((a, b) => a.localeCompare(b))
-                .map(name => 
-                    new ExplorerItem(name, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('organization'))
-                );
+                .map(name => {
+                    const item = new ExplorerItem(name, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('organization'));
+                    item.command = {
+                        command: 'esExt.showRoleMapping',
+                        title: 'View Role Mapping',
+                        arguments: [name]
+                    };
+                    return item;
+                });
         } catch (err) {
             vscode.window.showErrorMessage(`Failed to fetch Role Mappings: ${err}`);
             return [new ExplorerItem('Failed to load role mappings', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];

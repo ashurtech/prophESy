@@ -321,6 +321,48 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showInformationMessage('CA certificate cleared. New connections will not use a custom CA.');
         }),
 
+        vscode.commands.registerCommand('esExt.showRole', async (roleName: string) => {
+            const client = explorerProvider.getActiveClient();
+            if (!client) {
+                vscode.window.showErrorMessage('Please connect to an Elasticsearch cluster first.');
+                return;
+            }
+            try {
+                const roles = await client.security.getRole({ name: roleName });
+                const roleDef = roles[roleName];
+                if (roleDef) {
+                    const prettyJson = JSON.stringify(roleDef, null, 2);
+                    const doc = await vscode.workspace.openTextDocument({ content: prettyJson, language: 'json' });
+                    await vscode.window.showTextDocument(doc, { preview: false });
+                } else {
+                    vscode.window.showErrorMessage(`Role '${roleName}' not found.`);
+                }
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`Failed to fetch role '${roleName}': ${err.message}`);
+            }
+        }),
+
+        vscode.commands.registerCommand('esExt.showRoleMapping', async (mappingName: string) => {
+            const client = explorerProvider.getActiveClient();
+            if (!client) {
+                vscode.window.showErrorMessage('Please connect to an Elasticsearch cluster first.');
+                return;
+            }
+            try {
+                const mappings = await client.security.getRoleMapping({ name: mappingName });
+                const mappingDef = mappings[mappingName];
+                if (mappingDef) {
+                    const prettyJson = JSON.stringify(mappingDef, null, 2);
+                    const doc = await vscode.workspace.openTextDocument({ content: prettyJson, language: 'json' });
+                    await vscode.window.showTextDocument(doc, { preview: false });
+                } else {
+                    vscode.window.showErrorMessage(`Role mapping '${mappingName}' not found.`);
+                }
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`Failed to fetch role mapping '${mappingName}': ${err.message}`);
+            }
+        }),
+
     // Register context menu commands for cluster items
     vscode.commands.registerCommand('esExt.clusterContextMenu', async (item) => {
         if (item.contextValue?.startsWith('clusterItem:')) {
