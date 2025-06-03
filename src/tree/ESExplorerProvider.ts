@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
 import { Client } from '@elastic/elasticsearch';
 
-
-
 interface ClusterConfig {
     id: string;
     name: string;
@@ -340,7 +338,7 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 let statusText = '';
                 let healthText = '';
                 let healthIcon = new vscode.ThemeIcon('circle-outline', new vscode.ThemeColor('disabledForeground'));
-                  if (isConnected) {
+                if (isConnected) {
                     statusText = ' (Connected)';
                     
                     if (health) {
@@ -458,6 +456,7 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             
             items.push(
                 new ExplorerItem('Cluster Info', `clusterInfo:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('info')),
+                new ExplorerItem('Nodes', `nodes:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('server-environment')),
                 new ExplorerItem('Important Links', `links:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('link-external')),
                 new ExplorerItem('Data Streams', `dataStreams:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('database')),
                 new ExplorerItem('Roles', `roles:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('person')),
@@ -468,7 +467,8 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             // Add management actions
             const divider = new ExplorerItem('───────────', 'divider', vscode.TreeItemCollapsibleState.None);
             divider.iconPath = new vscode.ThemeIcon('blank');
-            items.push(divider);            if (clusterId !== this.activeClusterId) {
+            items.push(divider);
+            if (clusterId !== this.activeClusterId) {
                 const selectItem = new ExplorerItem('Set as Active', 'select', vscode.TreeItemCollapsibleState.None);
                 selectItem.command = { 
                     command: 'esExt.selectCluster', 
@@ -512,6 +512,8 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             switch (category) {
                 case 'clusterInfo':
                     return this.fetchClusterInfo(client, clusterId);
+                case 'nodes':
+                    return this.fetchClusterNodes(client);
                 case 'links':
                     return this.fetchImportantLinks(clusterId);
                 case 'elasticsearch':
@@ -810,7 +812,7 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             } else {
                 shardStatusIcon = new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
             }
-              const items = [
+            const items = [
                 new ExplorerItem(`Name: ${info.name}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('tag')),
                 new ExplorerItem(`Version: ${info.version.number}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('versions')),
                 new ExplorerItem(`Cluster UUID: ${info.cluster_uuid}`, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('key'))
@@ -830,6 +832,67 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
             vscode.window.showErrorMessage(`Failed to fetch cluster info: ${err}`);
             return [new ExplorerItem('Failed to load cluster info', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
         }
+    }
+
+    private async fetchClusterNodes(client: Client): Promise<ExplorerItem[]> {
+        try {
+            // Query node stats with filter_path for relevant info
+            const statsResponse: any = await client.nodes.stats({
+                filter_path: [
+                    'nodes.*.name',
+                    'nodes.*.ip',
+                    'nodes.*.roles',
+                    'nodes.*.os.cpu.percent',
+                    'nodes.*.jvm.mem.heap_used_percent',
+                    'nodes.*.fs.total.total_in_bytes',
+                    'nodes.*.fs.total.free_in_bytes'
+                ]
+            });
+            const nodes = statsResponse.nodes || statsResponse.body?.nodes || {};
+            const nodeItems: ExplorerItem[] = [];
+            for (const [nodeId, nodeInfoRaw] of Object.entries(nodes)) {
+                const nodeInfo = nodeInfoRaw as any;
+                const name = nodeInfo.name || nodeId;
+                const ip = nodeInfo.ip || 'N/A';
+                const roles = Array.isArray(nodeInfo.roles) ? nodeInfo.roles.join(', ') : 'N/A';
+                const cpu = typeof nodeInfo.os?.cpu?.percent === 'number' ? `${nodeInfo.os.cpu.percent}%` : 'N/A';
+                const jvm = typeof nodeInfo.jvm?.mem?.heap_used_percent === 'number' ? `${nodeInfo.jvm.mem.heap_used_percent}%` : 'N/A';
+                const totalBytes = nodeInfo.fs?.total?.total_in_bytes;
+                const freeBytes = nodeInfo.fs?.total?.free_in_bytes;
+                const totalDisk = totalBytes !== undefined ? this.formatBytes(totalBytes) : 'N/A';
+                const freeDisk = freeBytes !== undefined ? this.formatBytes(freeBytes) : 'N/A';
+                // Compose label
+                const label = `${name} (${ip})`;
+                // Compose tooltip
+                const tooltip = `Node ID: ${nodeId}\nRoles: ${roles}\nCPU: ${cpu}\nJVM Heap Used: ${jvm}\nDisk: ${freeDisk} free / ${totalDisk} total`;
+                // Icon: use a different icon for master/data/ingest roles if possible
+                let icon = new vscode.ThemeIcon('server');
+                if (Array.isArray(nodeInfo.roles)) {
+                    if (nodeInfo.roles.includes('master')) icon = new vscode.ThemeIcon('star');
+                    else if (nodeInfo.roles.includes('data')) icon = new vscode.ThemeIcon('database');
+                    else if (nodeInfo.roles.includes('ingest')) icon = new vscode.ThemeIcon('cloud-upload');
+                }
+                const item = new ExplorerItem(label, undefined, vscode.TreeItemCollapsibleState.None, icon);
+                item.tooltip = tooltip;
+                nodeItems.push(item);
+            }
+            if (nodeItems.length === 0) {
+                return [new ExplorerItem('No nodes found', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+            }
+            return nodeItems;
+        } catch (err) {
+            vscode.window.showErrorMessage(`Failed to fetch nodes: ${err}`);
+            return [new ExplorerItem('Failed to load nodes', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+        }
+    }
+
+    // Utility to format bytes as human-readable string
+    private formatBytes(bytes: number): string {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
     private fetchImportantLinks(clusterId: string): ExplorerItem[] {
