@@ -5,11 +5,12 @@
   "version": "1.5.5",
   "publisher": "ASHURTECH",
   "license": "MIT",
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run bundle",
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js --sourcemap",
     "pretest": "npm run compile",
     "test": "echo \"No tests configured\" && exit 0",
     "package": "vsce package"
@@ -35,8 +36,9 @@
   "devDependencies": {
     "@types/node": "^22.15.21",
     "@types/vscode": "^1.100.0",
-    "typescript": "^5.8.3",
-    "@vscode/vsce": "^3.2.0"
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.25.5",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^9.0.2"
