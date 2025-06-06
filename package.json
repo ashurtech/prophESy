@@ -27,12 +27,12 @@
   "icon": "resources/prophesy_icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ASHURTECH/statuESK.git"
+    "url": "https://github.com/ASHURTECH/prophESy.git"
   },
   "bugs": {
-    "url": "https://github.com/ASHURTECH/statuESK/issues"
+    "url": "https://github.com/ASHURTECH/prophESy/issues"
   },
-  "homepage": "https://github.com/ASHURTECH/statuESK#readme",
+  "homepage": "https://github.com/ASHURTECH/prophESy#readme",
   "devDependencies": {
     "@types/node": "^22.15.21",
     "@types/vscode": "^1.100.0",
