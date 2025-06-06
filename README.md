@@ -1,6 +1,10 @@
-# Elasticsearch VS Code Extension
+# prophESy
 
 A comprehensive VS Code extension for managing multiple Elasticsearch clusters with secure credential storage and an intuitive tree view interface.
+
+## Repository Name
+
+This repository was renamed to **prophESy**. Please update any local remotes or bookmarks accordingly.
 
 ## Features
 
