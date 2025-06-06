@@ -2,7 +2,7 @@
   "name": "statusesk",
   "displayName": "statuESK - Elasticsearch Explorer",
   "description": "VS Code extension for managing and exploring Elasticsearch clusters with health monitoring",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "publisher": "ASHURTECH",
   "license": "MIT",
   "main": "./out/extension.js",

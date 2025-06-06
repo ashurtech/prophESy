@@ -46,6 +46,8 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
     private context: vscode.ExtensionContext;
     private autoRefreshEnabled: boolean = false;
     private refreshTimer: NodeJS.Timeout | undefined;
+    private dataStreamStatsSums: Map<string, { docCount: number | string, sizeBytes: number | string }> = new Map();
+    private dataStreamParentItems: Map<string, ExplorerItem> = new Map();
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -59,6 +61,12 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
 
     getActiveClient(): Client | undefined {
         return this.activeClusterId ? this.clients.get(this.activeClusterId) : undefined;
+    }
+
+    // Public method to get a client by clusterId
+    public getClient(clusterId?: string): Client | undefined {
+        if (clusterId) return this.clients.get(clusterId);
+        return this.getActiveClient();
     }
 
     getActiveCluster(): ClusterConfig | undefined {
@@ -313,6 +321,7 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
     }
 
     getTreeItem(element: ExplorerItem): vscode.TreeItem {
+        // No mutation of label here; label is set at construction in getChildren/fetchDataStreams
         return element;
     }
 
@@ -502,7 +511,8 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
 
         // Handle cluster-specific content expansion
         if (element.contextValue?.includes(':')) {
-            const [category, clusterId] = element.contextValue.split(':');
+            const [category, ...rest] = element.contextValue.split(':');
+            const clusterId = rest[rest.length - 1];
             const client = this.clients.get(clusterId);
             
             if (!client) {
@@ -523,7 +533,11 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
                 case 'haproxy':
                     return this.fetchHAProxyLinks(clusterId);
                 case 'dataStreams':
-                    return this.fetchDataStreams(client);
+                    return this.fetchDataStreams(client, clusterId);
+                case 'dataStream': {
+                    const dataStreamName = rest.slice(0, -1).join(':');
+                    return this.fetchDataStreamIndices(client, dataStreamName, clusterId);
+                }
                 case 'roles':
                     return this.fetchRoles(client);
                 case 'roleMappings':
@@ -895,6 +909,140 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
+    private async fetchDataStreams(client: Client, clusterId?: string): Promise<ExplorerItem[]> {
+        try {
+            // Get all data streams
+            const dsResp = await client.indices.getDataStream();
+            const dataStreams = dsResp.data_streams || [];
+            // Get stats for all data streams
+            const statsResp = await client.transport.request({
+                method: 'GET',
+                path: '/_data_stream/_stats',
+                querystring: {
+                    filter_path: '_all.total.docs.count,_all.total.docs.total_size_in_bytes,_all.total.shard_stats.total_count,data_streams.indices,status,health'
+                }
+            });
+            const statsAny = statsResp as any;
+            const stats = statsAny.data_streams || statsAny.body?.data_streams || [];
+            // Map stats by data stream name
+            const statsByName: Record<string, any> = {};
+            for (const s of stats) {
+                if (s.data_stream) statsByName[s.data_stream] = s;
+            }
+            // Compose tree items
+            return dataStreams.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((ds: any) => {
+                const dsStats = statsByName[ds.name] || {};
+                // Use sum from map if available
+                const key = `${ds.name}:${clusterId}`;
+                let docCount = 0;
+                let sizeBytes = 0;
+                if (this.dataStreamStatsSums.has(key)) {
+                    const sum = this.dataStreamStatsSums.get(key)!;
+                    docCount = sum.docCount as number;
+                    sizeBytes = sum.sizeBytes as number;
+                } else {
+                    // Fallback: sum from backing_indices if available (may be 0)
+                    if (Array.isArray(dsStats.backing_indices)) {
+                        for (const idx of dsStats.backing_indices) {
+                            let docs = idx?.stats?.primaries?.docs?.count;
+                            let bytes = idx?.stats?.primaries?.store?.size_in_bytes;
+                            if (docs === undefined) docs = idx?.doc_count;
+                            if (bytes === undefined) bytes = idx?.store_size_bytes;
+                            if (docs === undefined) docs = 0;
+                            if (bytes === undefined) bytes = 0;
+                            docCount += docs;
+                            sizeBytes += bytes;
+                        }
+                    }
+                }
+                const label = `${ds.name} (${docCount} docs, ${this.formatBytes(sizeBytes)})`;
+                const item = new ExplorerItem(label, `dataStream:${ds.name}:${clusterId}`, vscode.TreeItemCollapsibleState.Collapsed, new vscode.ThemeIcon('database'));
+                item.command = {
+                    command: 'esExt.showDataStreamStats',
+                    title: 'Show Data Stream Stats',
+                    arguments: [ds.name, clusterId]
+                };
+                return item;
+            });
+        } catch (err) {
+            vscode.window.showErrorMessage(`Failed to fetch Data Streams: ${err}`);
+            return [new ExplorerItem('Failed to load data streams', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+        }
+    }
+
+    private async fetchDataStreamIndices(client: Client, dataStreamName: string, clusterId?: string): Promise<ExplorerItem[]> {
+        try {
+            // Get data stream info
+            const dsResp = await client.indices.getDataStream({ name: dataStreamName });
+            const ds = dsResp.data_streams?.[0];
+            if (!ds) return [new ExplorerItem('No indices found', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+            // Get stats for this data stream
+            const statsResp = await client.transport.request({
+                method: 'GET',
+                path: `/_data_stream/${encodeURIComponent(dataStreamName)}/_stats`,
+                querystring: {
+                    filter_path: 'data_streams.indices,status,health'
+                }
+            });
+            const statsAny = statsResp as any;
+            const dsStats = (statsAny.data_streams || statsAny.body?.data_streams || [])[0] || {};
+            const indices = dsStats.indices || ds.indices || [];
+            // Compose index items and sum
+            const items: ExplorerItem[] = [];
+            let totalDocs: number = 0;
+            let totalBytes: number = 0;
+            for (const idx of indices) {
+                const idxName = idx.index_name || idx.name || idx;
+                let docCount = idx?.stats?.primaries?.docs?.count;
+                let sizeBytes = idx?.stats?.primaries?.store?.size_in_bytes;
+                if (docCount === undefined) docCount = idx?.doc_count;
+                if (sizeBytes === undefined) sizeBytes = idx?.store_size_bytes;
+                if (!docCount && !sizeBytes) {
+                    try {
+                        const statsResp = await client.indices.stats({ index: idxName });
+                        const stats = (statsResp as any).body || statsResp;
+                        const primaries = stats.indices?.[idxName]?.primaries;
+                        docCount = primaries?.docs?.count ?? 0;
+                        sizeBytes = primaries?.store?.size_in_bytes ?? 0;
+                    } catch {
+                        docCount = 0;
+                        sizeBytes = 0;
+                    }
+                }
+                totalDocs += typeof docCount === 'number' ? docCount : 0;
+                totalBytes += typeof sizeBytes === 'number' ? sizeBytes : 0;
+                let icon = new vscode.ThemeIcon('database');
+                const health = idx?.health || 'unknown';
+                if (health === 'green') icon = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+                else if (health === 'yellow') icon = new vscode.ThemeIcon('warning', new vscode.ThemeColor('charts.yellow'));
+                else if (health === 'red') icon = new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
+                const label = `${idxName} (${docCount} docs, ${typeof sizeBytes === 'number' ? this.formatBytes(sizeBytes) : sizeBytes})`;
+                const item = new ExplorerItem(label, `dataStreamIndex:${dataStreamName}:${idxName}:${clusterId}`, vscode.TreeItemCollapsibleState.None, icon);
+                item.command = {
+                    command: 'esExt.showDataStreamIndexStats',
+                    title: 'Show Data Stream Index Stats',
+                    arguments: [dataStreamName, idxName, clusterId]
+                };
+                items.push(item);
+            }
+            // Store the sum for the parent and refresh only the parent node
+            const key = `${dataStreamName}:${clusterId}`;
+            this.dataStreamStatsSums.set(key, { docCount: totalDocs, sizeBytes: totalBytes });
+            // Find the parent ExplorerItem for this data stream (by contextValue)
+            const parentItem = new ExplorerItem(
+                `${dataStreamName} (${totalDocs} docs, ${this.formatBytes(totalBytes)})`,
+                `dataStream:${dataStreamName}:${clusterId}`,
+                vscode.TreeItemCollapsibleState.Collapsed,
+                new vscode.ThemeIcon('database')
+            );
+            this._onDidChangeTreeData.fire(parentItem);
+            return items;
+        } catch (err) {
+            vscode.window.showErrorMessage(`Failed to fetch indices for data stream ${dataStreamName}: ${err}`);
+            return [new ExplorerItem('Failed to load indices', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
+        }
+    }
+
     private fetchImportantLinks(clusterId: string): ExplorerItem[] {
         const config = this.clusters.get(clusterId);
         if (!config) {
@@ -1046,21 +1194,6 @@ export class ESExplorerProvider implements vscode.TreeDataProvider<ExplorerItem>
         items.push(statsLink);
 
         return items;
-    }
-
-    private async fetchDataStreams(client: Client): Promise<ExplorerItem[]> {
-        try {
-            const dataStreams = await client.indices.getDataStream();
-            const dataStreamNames = dataStreams.data_streams?.map((ds: any) => ds.name) || [];
-            return dataStreamNames
-                .sort((a, b) => a.localeCompare(b))
-                .map((name: string) => 
-                    new ExplorerItem(name, undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('database'))
-                );
-        } catch (err) {
-            vscode.window.showErrorMessage(`Failed to fetch Data Streams: ${err}`);
-            return [new ExplorerItem('Failed to load data streams', undefined, vscode.TreeItemCollapsibleState.None, new vscode.ThemeIcon('error'))];
-        }
     }
 
     private async fetchRoles(client: Client): Promise<ExplorerItem[]> {

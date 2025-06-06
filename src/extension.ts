@@ -363,6 +363,49 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }),
 
+        // Show Data Stream Stats
+        vscode.commands.registerCommand('esExt.showDataStreamStats', async (dataStreamName: string, clusterId?: string) => {
+            const client = explorerProvider.getClient(clusterId);
+            if (!client) {
+                vscode.window.showErrorMessage('Please connect to an Elasticsearch cluster first.');
+                return;
+            }
+            try {
+                const resp = await client.transport.request({
+                    method: 'GET',
+                    path: `/_data_stream/${encodeURIComponent(dataStreamName)}/_stats`
+                });
+                const stats = (resp as any).body || resp;
+                const doc = await vscode.workspace.openTextDocument({
+                    content: JSON.stringify(stats, null, 2),
+                    language: 'json'
+                });
+                await vscode.window.showTextDocument(doc, { preview: false });
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`Failed to fetch stats for data stream ${dataStreamName}: ${err.message}`);
+            }
+        }),
+
+        // Show Data Stream Index Stats
+        vscode.commands.registerCommand('esExt.showDataStreamIndexStats', async (dataStreamName: string, indexName: string, clusterId?: string) => {
+            const client = explorerProvider.getClient(clusterId);
+            if (!client) {
+                vscode.window.showErrorMessage('Please connect to an Elasticsearch cluster first.');
+                return;
+            }
+            try {
+                const resp = await client.indices.stats({ index: indexName });
+                const stats = (resp as any).body || resp;
+                const doc = await vscode.workspace.openTextDocument({
+                    content: JSON.stringify(stats, null, 2),
+                    language: 'json'
+                });
+                await vscode.window.showTextDocument(doc, { preview: false });
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`Failed to fetch stats for index ${indexName}: ${err.message}`);
+            }
+        }),
+
     // Register context menu commands for cluster items
     vscode.commands.registerCommand('esExt.clusterContextMenu', async (item) => {
         if (item.contextValue?.startsWith('clusterItem:')) {
