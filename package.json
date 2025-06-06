@@ -2,7 +2,7 @@
   "name": "prophESy",
   "displayName": "statuESK - Elasticsearch Explorer",
   "description": "VS Code extension for managing and exploring Elasticsearch clusters with health monitoring",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "publisher": "ASHURTECH",
   "license": "MIT",
   "main": "./out/extension.js",
@@ -23,7 +23,7 @@
     "health"
   ],
   "author": "ASHURTECH",
-  "icon": "resources/es_icon.png",
+  "icon": "resources/prophESy_icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/ASHURTECH/statuESK.git"
@@ -167,7 +167,7 @@
         {
           "id": "esExtExplorer",
           "name": "Elasticsearch Explorer",
-          "icon": "resources/es_icon.svg"
+          "icon": "resources/prophESy_icon.svg"
         }
       ]
     }
