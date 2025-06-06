@@ -23,7 +23,7 @@
     "health"
   ],
   "author": "ASHURTECH",
-  "icon": "resources/prophESy_icon.png",
+  "icon": "resources/prophesy_icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/ASHURTECH/statuESK.git"
@@ -167,7 +167,7 @@
         {
           "id": "esExtExplorer",
           "name": "Elasticsearch Explorer",
-          "icon": "resources/prophESy_icon.svg"
+          "icon": "resources/prophesy_icon.png"
         }
       ]
     }
