@@ -2,7 +2,7 @@
   "name": "prophESy",
   "displayName": "prophESy - Elasticsearch Explorer",
   "description": "VS Code extension for managing and exploring Elasticsearch clusters with health monitoring",
-  "version": "1.5.6",
+  "version": "1.5.9",
   "publisher": "ASHURTECHNET",
   "license": "MIT",
   "main": "./dist/extension.js",
