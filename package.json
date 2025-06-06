@@ -1,6 +1,6 @@
 {
   "name": "prophESy",
-  "displayName": "statuESK - Elasticsearch Explorer",
+  "displayName": "prophESy - Elasticsearch Explorer",
   "description": "VS Code extension for managing and exploring Elasticsearch clusters with health monitoring",
   "version": "1.5.5",
   "publisher": "ASHURTECH",
@@ -166,7 +166,7 @@
       "explorer": [
         {
           "id": "esExtExplorer",
-          "name": "Elasticsearch Explorer",
+          "name": "prophESy - Elasticsearch Seer",
           "icon": "resources/prophesy_icon.png"
         }
       ]
