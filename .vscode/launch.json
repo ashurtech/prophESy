@@ -8,9 +8,9 @@
       "runtimeExecutable": "${execPath}",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}"
-      ],
-      "outFiles": [
-        "${workspaceFolder}/out/**/*.js"
+      ],      "outFiles": [
+        "${workspaceFolder}/out/**/*.js",
+        "${workspaceFolder}/dist/**/*.js"
       ],
       "preLaunchTask": "npm: compile",
       "env": {
@@ -27,7 +27,11 @@
         "--extensionTestsPath=${workspaceFolder}/out/test"
       ],
       "preLaunchTask": "npm: compile",
-      "outFiles": ["${workspaceFolder}/out/test/**/*.js"],
+      "outFiles": [
+        "${workspaceFolder}/out/test/**/*.js",
+        "${workspaceFolder}/out/**/*.js",
+        "${workspaceFolder}/dist/**/*.js"
+      ],
       "env": {
         "NODE_EXTRA_CA_CERTS": "${workspaceFolder}/resources/ca.pem"
       }
